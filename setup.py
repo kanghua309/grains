@@ -39,7 +39,10 @@ setup(
     ],
     keywords='reinforcement learning openai gym finance trading interactive brokers',
     py_modules=['sairen'],
-    install_requires=['ibroke', 'numpy', 'gym'],
+    install_requires=['numpy', 'gym'],
+    dependency_links=[
+        'https://github.com/kanghua309/gdaxbroke/archive/master.zip@egg=gdaxbroke',
+    ],
     extras_require={'examples': ['h5py', 'keras', 'keras-rl', 'tensorflow', 'theano'], 'dev': ['sphinx']},
     package_data={},
 )

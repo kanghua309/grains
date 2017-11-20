@@ -32,7 +32,7 @@ from io import StringIO
 from gym.envs.registration import EnvSpec
 from gym.spaces import Box
 from gym.utils import EzPickle
-from ibroke import IBroke, Bar, create_logger, Instrument, now
+from gbroke import GBroke, Bar, create_logger, Instrument, now
 
 __version__ = "0.4.1"
 __all__ = ('MarketEnv', 'Obs')
@@ -43,6 +43,8 @@ MAX_INSTRUMENT_VOLUME = 1e9
 MAX_INSTRUMENT_QUANTITY = 20000
 MAX_TRADE_SIZE = 1e6
 MAX_TIME = time.time() + 10 * 365 * 24 * 60 * 60
+MAX_BID_DEPTH = 1e6
+MAX_ASK_DEPTH = 1e6
 Obs = namedtuple('Obs', Bar._fields + ('position', 'unrealized_gain'))      # type: ignore
 Obs.__doc__ = Bar.__doc__.replace('Bar', 'Observation') + """
 position
@@ -52,7 +54,11 @@ position
 unrealized_gain
     The amount you would make if you liquidated your current position (bought at the ask or sold at the bid).  Negative for loss.
 """     # That's my favorite dirty hack in a while :)
-OBS_BOUNDS = Obs(time=MAX_TIME, bid=MAX_INSTRUMENT_PRICE, bidsize=MAX_TRADE_SIZE, ask=MAX_INSTRUMENT_PRICE, asksize=MAX_TRADE_SIZE, last=MAX_INSTRUMENT_PRICE, lastsize=MAX_TRADE_SIZE, lasttime=MAX_TIME, open=MAX_INSTRUMENT_PRICE, high=MAX_INSTRUMENT_PRICE, low=MAX_INSTRUMENT_PRICE, close=MAX_INSTRUMENT_PRICE, vwap=MAX_INSTRUMENT_PRICE, volume=MAX_INSTRUMENT_VOLUME, open_interest=MAX_INSTRUMENT_VOLUME, position=1, unrealized_gain=MAX_INSTRUMENT_PRICE)      # type: ignore
+OBS_BOUNDS = Obs(time=MAX_TIME,
+                 bid=MAX_INSTRUMENT_PRICE, bidsize=MAX_TRADE_SIZE, ask=MAX_INSTRUMENT_PRICE, asksize=MAX_TRADE_SIZE, last=MAX_INSTRUMENT_PRICE, lastsize=MAX_TRADE_SIZE, lasttime=MAX_TIME,
+                 open=MAX_INSTRUMENT_PRICE, high=MAX_INSTRUMENT_PRICE, low=MAX_INSTRUMENT_PRICE, close=MAX_INSTRUMENT_PRICE, vwap=MAX_INSTRUMENT_PRICE, volume=MAX_INSTRUMENT_VOLUME, open_interest=MAX_INSTRUMENT_VOLUME,
+                 bid_depth=MAX_BID_DEPTH,ask_depth=MAX_ASK_DEPTH,
+                 position=1, unrealized_gain=MAX_INSTRUMENT_PRICE)      # type: ignore
 
 
 class MarketEnv(gym.Env, EzPickle):
@@ -130,7 +136,7 @@ class MarketEnv(gym.Env, EzPickle):
         assert obs_xform is None or callable(obs_xform)
         self._xform = (lambda obs: obs) if obs_xform is None else obs_xform         # Default xform is identity
 
-        self.ib = IBroke(host=host, port=port, client_id=client_id, timeout_sec=timeout_sec, verbose=2)
+        self.ib = GBroke(host=host, port=port, client_id=client_id, timeout_sec=timeout_sec, verbose=2)
         self.instrument = self.ib.get_instrument(instrument)
         self.log.info('Sairen %s trading %s up to %d contracts', __version__, self.instrument.tuple(), self.max_quantity)
         market_open = self.market_open()        #self.ib.market_open(self.instrument, afterhours=self.afterhours)
@@ -143,6 +149,7 @@ class MarketEnv(gym.Env, EzPickle):
         self.pos_actual = self.ib.get_position(self.instrument)     # Actual last reported number of contracts held
         self.act_start_time = None
         self.act_time = deque(maxlen=10)        # Track recent agent action times
+        #print('MarketEnv-{}-v0'.format('-'.join(map(str, self.instrument.tuple()))))
         self.spec = EnvSpec('MarketEnv-{}-v0'.format('-'.join(map(str, self.instrument.tuple()))), trials=10, max_episode_steps=episode_steps, nondeterministic=True)      # This is a bit of a hack for rllab
 
     def _on_mktdata(self, instrument: Instrument, bar: Bar) -> None:
@@ -167,6 +174,7 @@ class MarketEnv(gym.Env, EzPickle):
     def _on_order(self, order) -> None:
         """Called when order status changes by IBroke."""
         self.log.debug('ORDER %s\t(thread %d)', order, threading.get_ident())
+        print("=======================",  order.profit)
         self.profit += order.profit
 
     def _on_alert(self, instrument, msg) -> None:
@@ -285,7 +293,7 @@ class MarketEnv(gym.Env, EzPickle):
         if done:
             # TODO: Actually wait until order settles.  (Close is not happening or accounting is not good.)
             time.sleep(1)       # Wait for final close order to fill
-
+        print("++++++++++++++++++++++",done,self.profit)
         self.reward = self.profit       # Reward is profit since last step
         self.episode_profit += self.profit
         self.profit = 0
