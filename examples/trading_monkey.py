@@ -5,7 +5,7 @@ from sairen import MarketEnv
 
 def main():
     """Create a market environment, instantiate a random agent, and run the agent for one episode."""
-    env = MarketEnv("GOOG", episode_steps=20)   # Apple stock, 1-second bars by default
+    env = MarketEnv("BTC-USD", episode_steps=20)   # Apple stock, 1-second bars by default
     print ("env",env)
 
     agent = RandomAgent(env.action_space)       # Actions are continuous from -1 = go short to +1 = go long.  0 is go flat.  Sets absolute target position.

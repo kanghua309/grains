@@ -136,17 +136,17 @@ class MarketEnv(gym.Env, EzPickle):
         assert obs_xform is None or callable(obs_xform)
         self._xform = (lambda obs: obs) if obs_xform is None else obs_xform         # Default xform is identity
 
-        self.ib = GBroke(host=host, port=port, client_id=client_id, timeout_sec=timeout_sec, verbose=2)
-        self.instrument = self.ib.get_instrument(instrument)
+        self.gb = GBroke(wsurl ='wss://ws-feed-public.sandbox.gdax.com')
+        self.instrument = self.gb.get_instrument(instrument)
         self.log.info('Sairen %s trading %s up to %d contracts', __version__, self.instrument.tuple(), self.max_quantity)
         market_open = self.market_open()        #self.ib.market_open(self.instrument, afterhours=self.afterhours)
-        self.log.info('Market {} ({} hours).  Next {} {}'.format('open' if market_open else 'closed', 'after' if self.afterhours else 'regular', 'close' if market_open else 'open', self.ib.market_hours(self.instrument, self.afterhours)[int(market_open)]))
-        self.ib.register(self.instrument, on_bar=self._on_mktdata, bar_type=obs_type, bar_size=obs_size, on_order=self._on_order, on_alert=self._on_alert)
+        #self.log.info('Market {} ({} hours).  Next {} {}'.format('open' if market_open else 'closed', 'after' if self.afterhours else 'regular', 'close' if market_open else 'open', self.ib.market_hours(self.instrument, self.afterhours)[int(market_open)]))
+        self.gb.register(self.instrument, on_bar=self._on_mktdata, bar_type=obs_type, bar_size=obs_size, on_order=self._on_order, on_alert=self._on_alert)
         self.observation_space = getattr(obs_xform, 'observation_space', Box(low=np.zeros(len(OBS_BOUNDS)), high=np.array(OBS_BOUNDS)))     # TODO: Some bounds (pos, gain) are negative
         self.log.debug('XFORM %s', self._xform)
         self.log.debug('OBS SPACE %s', self.observation_space)
         np.set_printoptions(linewidth=9999)
-        self.pos_actual = self.ib.get_position(self.instrument)     # Actual last reported number of contracts held
+        self.pos_actual = self.gb.get_position(self.instrument)     # Actual last reported number of contracts held
         self.act_start_time = None
         self.act_time = deque(maxlen=10)        # Track recent agent action times
         #print('MarketEnv-{}-v0'.format('-'.join(map(str, self.instrument.tuple()))))
@@ -158,15 +158,15 @@ class MarketEnv(gym.Env, EzPickle):
         After a :meth:`reset`, transforms are being called (updated) in the background even when :meth:`step` is
         not called.
         """
-        self.pos_actual = self.ib.get_position(self.instrument)
-        self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.ib.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
+        self.pos_actual = self.gb.get_position(self.instrument)
+        self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
         self.raw_obs = np.array(bar + (self.pos_actual / self.max_quantity, self.unrealized_gain), dtype=float)
         self.log.debug('OBS RAW %s', self.raw_obs)
         obs = self._xform(self.raw_obs)
         self.log.debug('OBS XFORM %s', obs)
         assert obs is None or isinstance(obs, np.ndarray)
 
-        if obs is not None and self.ib.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
+        if obs is not None and self.gb.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
             self.data_q.put_nowait(obs)
             if self.data_q.qsize() > 1:
                 self.log.warning('Your agent is falling behind! Observation queue contains %d items.', self.data_q.qsize())
@@ -183,7 +183,7 @@ class MarketEnv(gym.Env, EzPickle):
     def flatten(self) -> None:
         """Cancel any open orders and close any positions."""
         if hasattr(self, 'instrument'):     # If self.ib times out connecting, we don't want to flatten() atexit.
-            self.ib.flatten(self.instrument)
+            self.gb.flatten(self.instrument)
             time.sleep(1)       # Give order time to fill  TODO: Wait (with timeout) for actual fill
 
     def finish_on_next_step(self) -> None:
@@ -192,7 +192,7 @@ class MarketEnv(gym.Env, EzPickle):
 
     def market_open(self) -> bool:
         """:Return: True if the market will be open in the very near future (respecting the value of `afterhours`)."""
-        return self.ib.market_open(self.instrument, now() + timedelta(seconds=self.ib.timeout_sec), afterhours=self.afterhours)
+        return self.gb.market_open(self.instrument, now() + timedelta(seconds=self.gb.timeout_sec), afterhours=self.afterhours)
 
     @property
     def info(self) -> Dict[str, Any]:
@@ -201,9 +201,9 @@ class MarketEnv(gym.Env, EzPickle):
             'step': self.step_num,
             'episode_profit': self.episode_profit,
             'position_desired': self.pos_desired,
-            'position_actual': self.ib.get_position(self.instrument),
+            'position_actual': self.gb.get_position(self.instrument),
             'unrealized_gain': self.unrealized_gain,
-            'avg_cost': self.ib.get_cost(self.instrument) or 0.0,
+            'avg_cost': self.gb.get_cost(self.instrument) or 0.0,
             'agent_time_last': self.act_time[-1] if self.act_time else np.nan,
             'agent_time_avg': np.mean(self.act_time) if self.act_time else np.nan,
         }
@@ -214,7 +214,7 @@ class MarketEnv(gym.Env, EzPickle):
         if hasattr(self, 'ib'):     # We may not have ever connected, but _close gets called atexit anyway.
             self.done = True        # Stop observations going into the queue
             self.flatten()
-            self.ib.disconnect()
+            self.gb.disconnect()
 
     def _reset(self) -> np.ndarray:
         """Flatten positions, reset accounting, and return the first observation.
@@ -231,17 +231,17 @@ class MarketEnv(gym.Env, EzPickle):
         self.unrealized_gain = 0.0
         self.observation = None
         # Note: even when we're "disconnected" or the market is "closed," we can still receive market data (separate connection, afterhours can be open).
-        while not self.ib.connected:
-            time.sleep(self.ib.timeout_sec)
+        while not self.gb.connected:
+            time.sleep(self.gb.timeout_sec)
         msg = None
         while not self.market_open():
             if msg is None:
-                open_, _ = self.ib.market_hours(self.instrument, afterhours=self.afterhours)
+                open_, _ = self.gb.market_hours(self.instrument, afterhours=self.afterhours)
                 msg = 'Market is closed.'
                 if open_:
                     msg += ' Next open is {} mins ({})'.format(int(np.ceil((open_ - now()).total_seconds() / 60)), open_)
                 self.log.info(msg)
-            time.sleep(self.ib.timeout_sec)
+            time.sleep(self.gb.timeout_sec)
         self.done = False
         self.action = 0.0
         self.pos_desired = 0
@@ -267,7 +267,7 @@ class MarketEnv(gym.Env, EzPickle):
 
         # If last step, set action to flatten, done = True
         done = False
-        if self._finish_on_next_step or (self.episode_steps is not None and self.step_num >= self.episode_steps) or not self.ib.connected or not self.market_open():
+        if self._finish_on_next_step or (self.episode_steps is not None and self.step_num >= self.episode_steps) or not self.gb.connected or not self.market_open():
             if not self.market_open():
                 self.log.info('Market closing.')
             action = 0.0
@@ -279,16 +279,16 @@ class MarketEnv(gym.Env, EzPickle):
         action = np.asscalar(action)
 
         # Issue order to take action
-        self.ib.cancel_all(self.instrument)
-        position = self.ib.get_position(self.instrument)
-        open_orders = sum(1 for _ in self.ib.get_open_orders())
+        self.gb.cancel_all(self.instrument)
+        position = self.gb.get_position(self.instrument)
+        open_orders = sum(1 for _ in self.gb.get_open_orders())
         self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
         # Try to prevent orders and/or positions piling up when things get busy.
         if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.pos_desired) >= abs(position)):
             self.log.warning('Constipation: position %d, %d open orders, skipping action.', position, open_orders)
         else:
             self.log.debug('ORDER TARGET %d', self.pos_desired)
-            self.ib.order_target(self.instrument, self.pos_desired)
+            self.gb.order_target(self.instrument, self.pos_desired)
 
         if done:
             # TODO: Actually wait until order settles.  (Close is not happening or accounting is not good.)
