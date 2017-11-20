@@ -21,11 +21,12 @@ def find_version(*file_paths):
 
 
 setup(
-    name='Sairen',
-    version=find_version('sairen', 'env.py'),
+    name='Grains',
+    version=find_version('grains', 'env.py'),
     description='OpenAI Gym Reinforcement Learning Environment for the Stock Market',
     long_description=long_description,
-    url='https://gitlab.com/doctorj/sairen',
+    url='https://github.com/kanghua309/grains',
+    download_url='https://github.com/kanghua309/grains/archive/master.zip',
     author='Doctor J',
     license='LGPL-3.0+',
     classifiers=[
@@ -38,7 +39,7 @@ setup(
         'Programming Language :: Python :: 3.5',
     ],
     keywords='reinforcement learning openai gym finance trading interactive brokers',
-    py_modules=['sairen'],
+    py_modules=['grains'],
     install_requires=['numpy', 'gym'],
     dependency_links=[
         'https://github.com/kanghua309/gdaxbroke/archive/master.zip@egg=gdaxbroke',
