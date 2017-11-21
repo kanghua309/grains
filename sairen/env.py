@@ -117,6 +117,7 @@ class MarketEnv(gym.Env, EzPickle):
         self.log = create_logger('sairen', loglevel)
         self.max_quantity = int(max_quantity)
         self.quantity_increment = int(quantity_increment)
+        print("self.max_quantity:",self.max_quantity)
         #assert 1 <= self.quantity_increment <= self.max_quantity and self.max_quantity <= MAX_INSTRUMENT_QUANTITY, (self.quantity_increment, self.max_quantity) #TODO
         self.episode_steps = None if episode_steps is None else int(episode_steps)
         assert self.episode_steps is None or self.episode_steps > 0
@@ -136,12 +137,15 @@ class MarketEnv(gym.Env, EzPickle):
         assert obs_xform is None or callable(obs_xform)
         self._xform = (lambda obs: obs) if obs_xform is None else obs_xform         # Default xform is identity
 
-        self.gb = GBroke(wsurl ='wss://ws-feed-public.sandbox.gdax.com')
+        #self.gb = GBroke(wsurl ='wss://ws-feed-public.sandbox.gdax.com')
+        self.gb = GBroke(wsurl = 'wss://ws-feed.gdax.com')
         self.instrument = self.gb.get_instrument(instrument)
         self.log.info('Sairen %s trading %s up to %d contracts', __version__, self.instrument.tuple(), self.max_quantity)
         market_open = self.market_open()        #self.ib.market_open(self.instrument, afterhours=self.afterhours)
         #self.log.info('Market {} ({} hours).  Next {} {}'.format('open' if market_open else 'closed', 'after' if self.afterhours else 'regular', 'close' if market_open else 'open', self.ib.market_hours(self.instrument, self.afterhours)[int(market_open)]))
-        self.gb.register(self.instrument, on_bar=self._on_mktdata, bar_type=obs_type, bar_size=obs_size, on_order=self._on_order, on_alert=self._on_alert)
+        instrument = self.gb.register(self.instrument, on_bar=self._on_mktdata, bar_type=obs_type, bar_size=obs_size, on_order=self._on_order, on_alert=self._on_alert)
+        self.gb.watch_bookorder(instrument)
+
         self.observation_space = getattr(obs_xform, 'observation_space', Box(low=np.zeros(len(OBS_BOUNDS)), high=np.array(OBS_BOUNDS)))     # TODO: Some bounds (pos, gain) are negative
         self.log.debug('XFORM %s', self._xform)
         self.log.debug('OBS SPACE %s', self.observation_space)
