@@ -168,9 +168,12 @@ class MarketEnv(gym.Env, EzPickle):
             return
         self.pos_actual = self.gb.get_position(self.instrument)
         print("pos_actual:",self.pos_actual)
-        self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
-        print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
+        #self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
+        #print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
 
+        self.unrealized_gain = (bar.close - bar.open) *  self.pos_actual
+        print("unrealized_gain ================= :",self.unrealized_gain)
+        self.profit = self.unrealized_gain
         self.raw_obs = np.array(bar + (self.pos_actual / self.max_quantity, self.unrealized_gain), dtype=float)
         self.log.debug('OBS RAW %s', self.raw_obs)
         obs = self._xform(self.raw_obs)
@@ -179,6 +182,7 @@ class MarketEnv(gym.Env, EzPickle):
 
         if obs is not None and self.gb.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
             self.data_q.put_nowait(obs)
+            print('put into data_q !!!')
             if self.data_q.qsize() > 1:
                 self.log.warning('Your agent is falling behind! Observation queue contains %d items.', self.data_q.qsize())
 
@@ -186,7 +190,7 @@ class MarketEnv(gym.Env, EzPickle):
         """Called when order status changes by IBroke."""
         self.log.debug('ORDER %s\t(thread %d)', order, threading.get_ident())
         print("=======================",  order.profit)
-        self.profit += order.profit
+        #self.profit += order.profit #TODO
 
     def _on_alert(self, instrument, msg) -> None:
         self.log.warning('ALERT: %s', msg)
@@ -300,12 +304,14 @@ class MarketEnv(gym.Env, EzPickle):
             self.log.warning('Constipation: position %d, %d open orders, skipping action.', position, open_orders)
         else:
             self.log.debug('ORDER TARGET %d', self.pos_desired)
+            print("===================================== order !!!!!!!!!!!!!!",self.pos_desired)
             self.gb.order_target(self.instrument, self.pos_desired)
 
         if done:
             # TODO: Actually wait until order settles.  (Close is not happening or accounting is not good.)
             time.sleep(1)       # Wait for final close order to fill
         print("++++++++++++++++++++++",done,self.profit)
+
         self.reward = self.profit       # Reward is profit since last step
         self.episode_profit += self.profit
         self.profit = 0
