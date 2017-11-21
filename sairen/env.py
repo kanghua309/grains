@@ -117,7 +117,7 @@ class MarketEnv(gym.Env, EzPickle):
         self.log = create_logger('sairen', loglevel)
         self.max_quantity = int(max_quantity)
         self.quantity_increment = int(quantity_increment)
-        assert 1 <= self.quantity_increment <= self.max_quantity and self.max_quantity <= MAX_INSTRUMENT_QUANTITY, (self.quantity_increment, self.max_quantity)
+        #assert 1 <= self.quantity_increment <= self.max_quantity and self.max_quantity <= MAX_INSTRUMENT_QUANTITY, (self.quantity_increment, self.max_quantity) #TODO
         self.episode_steps = None if episode_steps is None else int(episode_steps)
         assert self.episode_steps is None or self.episode_steps > 0
         self.afterhours = afterhours
@@ -158,8 +158,15 @@ class MarketEnv(gym.Env, EzPickle):
         After a :meth:`reset`, transforms are being called (updated) in the background even when :meth:`step` is
         not called.
         """
+        print(bar)
+        if np.isnan(bar.bid) or np.isnan(bar.ask):
+            print('return .... ')
+            return
         self.pos_actual = self.gb.get_position(self.instrument)
+        print("pos_actual:",self.pos_actual)
         self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
+        print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
+
         self.raw_obs = np.array(bar + (self.pos_actual / self.max_quantity, self.unrealized_gain), dtype=float)
         self.log.debug('OBS RAW %s', self.raw_obs)
         obs = self._xform(self.raw_obs)
@@ -277,12 +284,13 @@ class MarketEnv(gym.Env, EzPickle):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action), 'action {}, low {}, high {}'.format(action, self.action_space.low, self.action_space.high)       # requires an array
         action = np.asscalar(action)
-
         # Issue order to take action
         self.gb.cancel_all(self.instrument)
         position = self.gb.get_position(self.instrument)
         open_orders = sum(1 for _ in self.gb.get_open_orders())
         self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
+        print('-----------------------------step action:',action, self.pos_desired )
+
         # Try to prevent orders and/or positions piling up when things get busy.
         if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.pos_desired) >= abs(position)):
             self.log.warning('Constipation: position %d, %d open orders, skipping action.', position, open_orders)
