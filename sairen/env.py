@@ -71,7 +71,7 @@ class MarketEnv(gym.Env, EzPickle):
     disconnect from IB.
     """
 
-    action_space = Box(-1, 1, shape=(1,))
+    action_space = Box(0, 1, shape=(1,))#TODO
     """
     MarketEnv's action is a continuous float from -1 to 1 that sets the target position as a fraction of the
     environment's ``max_quantity`` parameter.  -1 means set the position to short ``max_quantity``, 0 means
@@ -138,7 +138,7 @@ class MarketEnv(gym.Env, EzPickle):
         self._xform = (lambda obs: obs) if obs_xform is None else obs_xform         # Default xform is identity
 
         #self.gb = GBroke(wsurl ='wss://ws-feed-public.sandbox.gdax.com')
-        self.gb = GBroke(wsurl = 'wss://ws-feed.gdax.com')
+        self.gb = GBroke(wsurl = 'wss://ws-feed-public.sandbox.gdax.com')
         self.instrument = self.gb.get_instrument(instrument)
         self.log.info('Sairen %s trading %s up to %d contracts', __version__, self.instrument.tuple(), self.max_quantity)
         market_open = self.market_open()        #self.ib.market_open(self.instrument, afterhours=self.afterhours)
@@ -166,14 +166,14 @@ class MarketEnv(gym.Env, EzPickle):
         if np.isnan(bar.bid) or np.isnan(bar.ask):
             print('return .... ')
             return
-        self.pos_actual = self.gb.get_position(self.instrument)
+        self.pos_actual = self.gb.get_position(self.instrument)  #TODO
         print("pos_actual:",self.pos_actual)
-        #self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
-        #print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
+        self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
+        print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
 
-        self.unrealized_gain = (bar.close - bar.open) *  self.pos_actual
+        #self.unrealized_gain = (bar.close - bar.open) *  self.pos_actual
         print("unrealized_gain ================= :",self.unrealized_gain)
-        self.profit = self.unrealized_gain
+        self.profit = (bar.close - bar.open) *  self.pos_actual #current bar step profit ?
         self.raw_obs = np.array(bar + (self.pos_actual / self.max_quantity, self.unrealized_gain), dtype=float)
         self.log.debug('OBS RAW %s', self.raw_obs)
         obs = self._xform(self.raw_obs)
@@ -182,14 +182,13 @@ class MarketEnv(gym.Env, EzPickle):
 
         if obs is not None and self.gb.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
             self.data_q.put_nowait(obs)
-            print('put into data_q !!!')
+            self.log.info('put into data_q !!!')
             if self.data_q.qsize() > 1:
                 self.log.warning('Your agent is falling behind! Observation queue contains %d items.', self.data_q.qsize())
 
     def _on_order(self, order) -> None:
         """Called when order status changes by IBroke."""
-        self.log.debug('ORDER %s\t(thread %d)', order, threading.get_ident())
-        print("=======================",  order.profit)
+        self.log.info('ORDER %s\t(thread %d)', order, threading.get_ident())
         #self.profit += order.profit #TODO
 
     def _on_alert(self, instrument, msg) -> None:
@@ -263,6 +262,7 @@ class MarketEnv(gym.Env, EzPickle):
         self._finish_on_next_step = False
         self.step_num = 0
         self.data_q = Queue()
+
         self.observation = self.data_q.get()       # Blocks until obs ready
         self.act_start_time = time.time()
         return self.observation
@@ -293,7 +293,7 @@ class MarketEnv(gym.Env, EzPickle):
         assert self.action_space.contains(action), 'action {}, low {}, high {}'.format(action, self.action_space.low, self.action_space.high)       # requires an array
         action = np.asscalar(action)
         # Issue order to take action
-        self.gb.cancel_all(self.instrument)
+        self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
         position = self.gb.get_position(self.instrument)
         open_orders = sum(1 for _ in self.gb.get_open_orders())
         self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
@@ -303,9 +303,10 @@ class MarketEnv(gym.Env, EzPickle):
         if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.pos_desired) >= abs(position)):
             self.log.warning('Constipation: position %d, %d open orders, skipping action.', position, open_orders)
         else:
-            self.log.debug('ORDER TARGET %d', self.pos_desired)
-            print("===================================== order !!!!!!!!!!!!!!",self.pos_desired)
-            self.gb.order_target(self.instrument, self.pos_desired)
+            self.log.info('0 ORDER TARGET %d', self.pos_desired)
+            self.gb.order_target(self.instrument, round(self.pos_desired/100,2))#TODO
+            self.log.info('1 ORDER TARGET %d', round(self.pos_desired/100,2))
+
 
         if done:
             # TODO: Actually wait until order settles.  (Close is not happening or accounting is not good.)
@@ -318,7 +319,10 @@ class MarketEnv(gym.Env, EzPickle):
         if done:
             self.observation = np.zeros(self.observation_space.shape)
         else:
+            self.log.info("0 --------------------get observation from queue")
             self.observation = self.data_q.get()       # block until next obs ready
+            self.log.info("1 --------------------get observation from queue")
+
 
         self.done = done        # Don't set until after waiting on queue, or queue will never get filled.
         info = self.info        # Variable because computed property, used more than once, want to be consistent.
