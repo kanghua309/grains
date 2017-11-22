@@ -88,7 +88,7 @@ def evaluate(env, agent, steps, iteration=None, episode=None, render=True):
 
 
 def main():
-    env = MarketEnv(("ES", "FUT", "GLOBEX", "USD"), obs_xform=BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=2)
+    env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 10, obs_xform=BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=2)
     obs_size = env.observation_space.shape[0]
 
     def evaluate_params(agent_params, iteration=None, episode=None):
