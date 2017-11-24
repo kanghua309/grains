@@ -138,13 +138,13 @@ class MarketEnv(gym.Env, EzPickle):
         self._xform = (lambda obs: obs) if obs_xform is None else obs_xform         # Default xform is identity
 
         #self.gb = GBroke(wsurl ='wss://ws-feed-public.sandbox.gdax.com')
-        self.gb = GBroke(wsurl = 'wss://ws-feed-public.sandbox.gdax.com')
+        self.gb = GBroke(wsurl = 'wss://ws-feed.gdax.com')
         self.instrument = self.gb.get_instrument(instrument)
         self.log.info('Sairen %s trading %s up to %d contracts', __version__, self.instrument.tuple(), self.max_quantity)
         market_open = self.market_open()        #self.ib.market_open(self.instrument, afterhours=self.afterhours)
         #self.log.info('Market {} ({} hours).  Next {} {}'.format('open' if market_open else 'closed', 'after' if self.afterhours else 'regular', 'close' if market_open else 'open', self.ib.market_hours(self.instrument, self.afterhours)[int(market_open)]))
         instrument = self.gb.register(self.instrument, on_bar=self._on_mktdata, bar_type=obs_type, bar_size=obs_size, on_order=self._on_order, on_alert=self._on_alert)
-        self.gb.watch_bookorder(instrument)
+        #self.gb.watch_bookorder(instrument)
 
         self.observation_space = getattr(obs_xform, 'observation_space', Box(low=np.zeros(len(OBS_BOUNDS)), high=np.array(OBS_BOUNDS)))     # TODO: Some bounds (pos, gain) are negative
         self.log.debug('XFORM %s', self._xform)
@@ -163,7 +163,10 @@ class MarketEnv(gym.Env, EzPickle):
         not called.
         """
         print(bar)
-        if np.isnan(bar.bid) or np.isnan(bar.ask):
+        # if np.isnan(bar.bid) or np.isnan(bar.ask):
+        #     print('return .... ')
+        #     return
+        if np.isnan(bar).any():
             print('return .... ')
             return
         self.pos_actual = self.gb.get_position(self.instrument)  #TODO
@@ -179,7 +182,7 @@ class MarketEnv(gym.Env, EzPickle):
         obs = self._xform(self.raw_obs)
         self.log.debug('OBS XFORM %s', obs)
         assert obs is None or isinstance(obs, np.ndarray)
-
+        print("=============== obs ......:",obs)
         if obs is not None and self.gb.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
             self.data_q.put_nowait(obs)
             self.log.info('put into data_q !!!')
@@ -293,7 +296,8 @@ class MarketEnv(gym.Env, EzPickle):
         assert self.action_space.contains(action), 'action {}, low {}, high {}'.format(action, self.action_space.low, self.action_space.high)       # requires an array
         action = np.asscalar(action)
         # Issue order to take action
-        self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
+        #self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
+        print("+++++++++++++++++++++++++++++++++++++++++++++cancel order all:")
         position = self.gb.get_position(self.instrument)
         open_orders = sum(1 for _ in self.gb.get_open_orders())
         self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
@@ -303,9 +307,10 @@ class MarketEnv(gym.Env, EzPickle):
         if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.pos_desired) >= abs(position)):
             self.log.warning('Constipation: position %d, %d open orders, skipping action.', position, open_orders)
         else:
-            self.log.info('0 ORDER TARGET %d', self.pos_desired)
-            self.gb.order_target(self.instrument, round(self.pos_desired/100,2))#TODO
-            self.log.info('1 ORDER TARGET %d', round(self.pos_desired/100,2))
+            #self.log.info('0 ORDER TARGET %d', self.pos_desired)
+            #self.gb.order_target(self.instrument, round(self.pos_desired/100,3))#TODO
+            print("+++++++++++++++++++++++++++++++++++++++++++++order_target:",round(self.pos_desired/100,3))
+            #self.log.info('1 ORDER TARGET %d', round(self.pos_desired/100,3))
 
 
         if done:
