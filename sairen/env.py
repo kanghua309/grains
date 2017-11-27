@@ -375,3 +375,6 @@ class MarketEnv(gym.Env, EzPickle):
 
     def _seed(self, seed=None):
         raise Warning("Don't you wish you could seed() the stock market!")
+
+    def _close(self):
+        self.gb.disconnect()

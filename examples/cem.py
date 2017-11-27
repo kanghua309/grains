@@ -139,7 +139,8 @@ def main():
             print(timestamp, env.instrument.symbol, iteration, stats['reward_elite'], 'mean', ','.join('{:.3f}'.format(s) for s in stats['elite_mean']), sep=',', file=bestfile)
             print(timestamp, env.instrument.symbol, iteration, stats['reward_elite'], 'std',  ','.join('{:.3f}'.format(s) for s in stats['elite_std']),  sep=',', file=bestfile)
         iteration += 1
-
+    print("--------------------------env close--------------------")
+    env.close()
 
 if __name__ == "__main__":
     main()
