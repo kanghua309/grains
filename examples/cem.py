@@ -24,8 +24,8 @@ from sairen.xform import BinaryDelta
 
 # 1 iteration runs `EPISODES` episodes, each with different parameters.  Each episode is `STEPS_PER_EPISODE` steps.
 ITERATIONS = 2
-EPISODES = 3
-STEPS_PER_EPISODE = 10
+EPISODES = 10
+STEPS_PER_EPISODE = 5
 
 
 class ContinuousActionLinearPolicy:
@@ -68,12 +68,12 @@ def cem(eval_func, params_mean, batch_size, n_iter, elite_frac, params_std=1.0):
         print("elite_params :",elite_params)
         params_mean = elite_params.mean(axis=0)
         params_std = elite_params.std(axis=0)
-        print("----------------------------------------------------",{'params_mean': params, 'rewards': rewards, 'params_best': elite_params[0], 'reward_best': rewards.max(), 'reward_elite': rewards[elite_inds].mean(), 'elite_mean': params_mean, 'elite_std': params_std, 'reward_mean': rewards.mean(), 'reward_std': rewards.std()})
+        print("params_mean,params_std",params_mean,params_std)
         yield {'params_mean': params, 'rewards': rewards, 'params_best': elite_params[0], 'reward_best': rewards.max(), 'reward_elite': rewards[elite_inds].mean(), 'elite_mean': params_mean, 'elite_std': params_std, 'reward_mean': rewards.mean(), 'reward_std': rewards.std()}
 
 
 def evaluate(env, agent, steps, iteration=None, episode=None, render=True):
-    print("==============================evaluate enter:")
+    print("==============================evaluate enter: steps",steps)
 
     """:Return: the total reward for running `agent` in `env` for `steps`.
 
@@ -101,7 +101,7 @@ import logging
 
 def main():
     #env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 10, obs_xform=BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=2)
-    env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 10, episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
+    env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 30, episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
 
     obs_size = env.observation_space.shape[0]
     print('obs size:',obs_size)

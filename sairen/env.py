@@ -163,26 +163,23 @@ class MarketEnv(gym.Env, EzPickle):
         not called.
         """
         print(bar)
-        # if np.isnan(bar.bid) or np.isnan(bar.ask):
-        #     print('return .... ')
-        #     return
         if np.isnan(bar).any():
-            print('return .... ')
+            print('obs not ready ,wait .... ')
             return
         self.pos_actual = self.gb.get_position(self.instrument)  #TODO
-        print("pos_actual:",self.pos_actual)
         self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
-        print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
-
+        #print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
         #self.unrealized_gain = (bar.close - bar.open) *  self.pos_actual
-        print("unrealized_gain ================= :",self.unrealized_gain)
-        self.profit = (bar.close - bar.open) *  self.pos_actual #current bar step profit ?
+        print("pos_actual:%s,unrealized_gain:%scost:%s" % (self.pos_actual,self.unrealized_gain,self.gb.get_cost(self.instrument)))
+        #self.profit = (bar.close - bar.open) *  self.pos_actual #current bar step profit ?
+        self.profit = (bar.close - bar.open) #current bar step profit ?
+        print("profit for this bar",self.profit)
         self.raw_obs = np.array(bar + (self.pos_actual / self.max_quantity, self.unrealized_gain), dtype=float)
         self.log.debug('OBS RAW %s', self.raw_obs)
         obs = self._xform(self.raw_obs)
         self.log.debug('OBS XFORM %s', obs)
         assert obs is None or isinstance(obs, np.ndarray)
-        print("=============== obs ......:",obs)
+        #print("=============== obs ......:",obs)
         if obs is not None and self.gb.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
             self.data_q.put_nowait(obs)
             self.log.info('put into data_q !!!')
@@ -228,7 +225,7 @@ class MarketEnv(gym.Env, EzPickle):
     def _close(self) -> None:
         """Cancel open orders, flatten position, and disconnect."""
         self.log.info('Cancelling, closing, disconnecting.')
-        if hasattr(self, 'ib'):     # We may not have ever connected, but _close gets called atexit anyway.
+        if hasattr(self, 'gb'):     # We may not have ever connected, but _close gets called atexit anyway.
             self.done = True        # Stop observations going into the queue
             self.flatten()
             self.gb.disconnect()
@@ -241,7 +238,7 @@ class MarketEnv(gym.Env, EzPickle):
         self.log.debug('RESET')
         # TODO: Warn if position is not zero at start of episode
         self.done = True        # Prevent _on_mktdata() from putting things in the queue and triggering step() while we flatten
-        self.flatten()
+        #self.flatten() TODO
         self.profit = 0.0
         self.episode_profit = 0.0
         self.reward = 0.0
@@ -297,11 +294,11 @@ class MarketEnv(gym.Env, EzPickle):
         action = np.asscalar(action)
         # Issue order to take action
         #self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
-        print("+++++++++++++++++++++++++++++++++++++++++++++cancel order all:")
+        print("+++++++++++++++++++++++++++++++++++++++++++++ignore cancel order all:")
         position = self.gb.get_position(self.instrument)
         open_orders = sum(1 for _ in self.gb.get_open_orders())
         self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
-        print('-----------------------------step action:',action, self.pos_desired )
+        print('-----------------------------step action,desired:',action, self.pos_desired )
 
         # Try to prevent orders and/or positions piling up when things get busy.
         if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.pos_desired) >= abs(position)):
@@ -309,16 +306,14 @@ class MarketEnv(gym.Env, EzPickle):
         else:
             #self.log.info('0 ORDER TARGET %d', self.pos_desired)
             #self.gb.order_target(self.instrument, round(self.pos_desired/100,3))#TODO
-            print("+++++++++++++++++++++++++++++++++++++++++++++order_target:",round(self.pos_desired/100,3))
+            print("+++++++++++++++++++++++++++++++++++++++++++++ignore order_target:",round(self.pos_desired/100,3))
             #self.log.info('1 ORDER TARGET %d', round(self.pos_desired/100,3))
-
 
         if done:
             # TODO: Actually wait until order settles.  (Close is not happening or accounting is not good.)
             time.sleep(1)       # Wait for final close order to fill
-        print("++++++++++++++++++++++",done,self.profit)
-
-        self.reward = self.profit       # Reward is profit since last step
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++=+++++",done,self.step_num,self.profit * self.pos_desired)
+        self.reward = self.profit * self.pos_desired      # Reward is profit since last step
         self.episode_profit += self.profit
         self.profit = 0
         if done:
