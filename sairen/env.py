@@ -34,6 +34,12 @@ from gym.spaces import Box
 from gym.utils import EzPickle
 from gbroke import GBroke, Bar, create_logger, Instrument, now
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.style.use('dark_background')
+
 __version__ = "0.4.1"
 __all__ = ('MarketEnv', 'Obs')
 RENDER_HEADERS_EVERY_STEPS = 60     #: Print column names to stdout for human-rendered output every this many steps
@@ -155,6 +161,7 @@ class MarketEnv(gym.Env, EzPickle):
         self.act_time = deque(maxlen=10)        # Track recent agent action times
         #print('MarketEnv-{}-v0'.format('-'.join(map(str, self.instrument.tuple()))))
         self.spec = EnvSpec('MarketEnv-{}-v0'.format('-'.join(map(str, self.instrument.tuple()))), trials=10, max_episode_steps=episode_steps, nondeterministic=True)      # This is a bit of a hack for rllab
+        self._first_render = True
 
     def _on_mktdata(self, instrument: Instrument, bar: Bar) -> None:
         """Called by IBroke on new market data; transforms observation and, if ready, puts it in data_q.
@@ -331,8 +338,9 @@ class MarketEnv(gym.Env, EzPickle):
         self.act_start_time = time.time()
         return self.observation, self.reward, self.done, info
 
-    def _render(self, mode='human', close=False):
-        if mode in ('human', 'ansi'):
+    def _render(self, mode='ansi', close=False):
+        print('----------render--------------',mode)
+        if mode in ( 'ansi'):
             outfile = StringIO() if mode == 'ansi' else sys.stdout
             if not close:
                 if self.instrument.sec_type == 'CASH':
@@ -370,8 +378,68 @@ class MarketEnv(gym.Env, EzPickle):
                 self.log.debug('INFO %s', sorted(self.info.items()))
                 if mode == 'ansi':
                     return outfile
+        elif mode in ('human'):
+            if self._first_render:
+                self._f, self._ax = plt.subplots(
+                    1,
+                    sharex=True
+                )  # 返回一个fig 一个 ax对象
+
+                #if len(self._spread_coefficients) == 1:
+                self._ax = [self._ax]
+                self._f.set_size_inches(12, 6)
+                self._first_render = False
+                #self._f.canvas.mpl_connect('close_event', self._handle_close)
+                # print("------------- _spread_coefficients:",self._spread_coefficients)
+
+                    # Spread price
+            obs = dict(zip(Obs._fields, self.raw_obs))
+            print(obs)
+            price = obs['last']
+            bid = obs['bid']
+            ask = obs['ask']
+            # ask += 1.0
+            print('debug : ', bid, ask)
+
+            # 在最后一个坐标轴上绘制
+            self._ax[-1].plot([self.step_num, self.step_num + 1],
+                              [bid, bid], color='white')
+            self._ax[-1].plot([self.step_num, self.step_num + 1],
+                              [ask, ask], color='white')
+
+            ymin, ymax = self._ax[-1].get_ylim()
+            yrange = ymax - ymin
+            #print('_iteration:', self._iteration, bid + 0.03 * yrange, self._action, self._actions['sell'],
+            #      self._position, list(self._position), range(self._iteration)[::5])
+            #########################################################################################
+
+            if  self.action > 0.5 : #TODO
+                self._ax[-1].scatter(self._iteration + 0.5, bid + 0.03 *
+                                     yrange, color='orangered', marker='v')
+            elif self.action < 0.5 :
+                self._ax[-1].scatter(self._iteration + 0.5, ask - 0.03 *
+                                     yrange, color='lawngreen', marker='^')
+
+
+            plt.suptitle('Current Reward: ' + "%.2f" % self.reward + ' ~ ' +
+                         'Cumulated PnL: ' + "%.2f" % self.episode_profit + ' ~ ' +
+                         'Action: ' + ['flat', 'long'][self.action] + ' ~ ')
+
+            # plt.suptitle('Current Reward: ' + "%.2f" % self.reward + ' ~ ' +
+            #              'Cumulated PnL: ' + "%.2f" % self.episode_profit + ' ~ ' +
+            #              'Action: ' + ['flat', 'long', 'short'][list(self._position).index(1)] + ' ~ ' +
+            #              'Entry Price: ' + "%.2f" % self._entry_price)
+            ########################################################################################
+            self._f.tight_layout()
+            plt.xticks(range(self._iteration)[::5])
+            print(max(0, self.step_num - 80.5), self.step_num + 0.5)
+            plt.xlim([max(0, self.step_num - 80.5), self.step_num + 0.5])  # 限定了x轴的最大范围
+            plt.subplots_adjust(top=0.85)
+            plt.pause(0.001)
+            #if savefig:
+            #    plt.savefig(filename)
         else:
-            raise NotImplementedError("Render mode '{}' not implemented".format(mode))
+             raise NotImplementedError("Render mode '{}' not implemented".format(mode))
 
     def _seed(self, seed=None):
         raise Warning("Don't you wish you could seed() the stock market!")

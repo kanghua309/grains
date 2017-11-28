@@ -6,21 +6,21 @@ from sairen import MarketEnv
 def main():
     """Create a market environment, instantiate a random agent, and run the agent for one episode."""
     env = MarketEnv(instrument = "BTC-USD",max_quantity=10, quantity_increment=1,obs_type='time', obs_size=10, episode_steps=200)   # Apple stock, 1-second bars by default
-    print ("env",env)
+    #print ("env",env)
 
     agent = RandomAgent(env.action_space)       # Actions are continuous from -1 = go short to +1 = go long.  0 is go flat.  Sets absolute target position.
     observation = env.reset()       # An observation is a numpy float array, values: time, bid, bidsize, ask, asksize, last, lastsize, lasttime, open, high, low, close, vwap, volume, open_interest, position, unrealized_gain
-    print ("observation",observation)
+    #print ("observation",observation)
     done = False
     total_reward = 0.0              # Reward is the profit realized when a trade closes
 
     while not done:
-        env.render()
+        env.render(mode = 'human')
         observation, reward, done, info = env.step(agent.act(observation))
-        print(observation, reward, done, info)
+        #print(observation, reward, done, info)
         total_reward += reward
 
-    print('\nTotal profit: {:.2f}'.format(total_reward))        # Sairen will automatically (try to) cancel open orders and close positions on exit
+    #print('\nTotal profit: {:.2f}'.format(total_reward))        # Sairen will automatically (try to) cancel open orders and close positions on exit
 
 
 class RandomAgent:
