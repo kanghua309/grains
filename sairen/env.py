@@ -399,7 +399,7 @@ class MarketEnv(gym.Env, EzPickle):
             bid = obs['bid']
             ask = obs['ask']
             # ask += 1.0
-            print('debug : ', bid, ask)
+            print('debug : ', bid, ask,self.step_num)
 
             # 在最后一个坐标轴上绘制
             self._ax[-1].plot([self.step_num, self.step_num + 1],
