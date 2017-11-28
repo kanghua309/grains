@@ -16,6 +16,8 @@ from rl.callbacks import FileLogger, Callback
 from rl.memory import EpisodeParameterMemory
 from rl.core import Processor
 from sairen import MarketEnv, xform
+import logging
+
 
 EPISODES = 1000
 STEPS_PER_EPISODE = 60
@@ -30,7 +32,9 @@ TRAIN_INTERVAL_EPISODES = 5
 
 def main():
     """Build model and train on environment."""
-    env = MarketEnv(("ES", "FUT", "GLOBEX", "USD"), obs_xform=xform.BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=3)
+    #env = MarketEnv(("ES", "FUT", "GLOBEX", "USD"), obs_xform=xform.BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=3)
+    env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 30, obs_xform=xform.BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
+
     #env = MarketEnv(("AAPL", "STK", "SMART", "USD"), obs_xform=xform.BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=4)
     nb_actions = 3      # Keras-RL CEM is a discrete agent
 
