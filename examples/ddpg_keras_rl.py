@@ -18,11 +18,14 @@ EPISODES = 16 * 60
 STEPS_PER_EPISODE = 60
 WARMUP_EPISODES = 10
 
+import logging
 
 def main():
     """Create environment, build models, train."""
-    env = MarketEnv(("ES", "FUT", "GLOBEX", "USD"), obs_xform=xform.Basic(30, 4), episode_steps=STEPS_PER_EPISODE, client_id=3)
+    #env = MarketEnv(("ES", "FUT", "GLOBEX", "USD"), obs_xform=xform.Basic(30, 4), episode_steps=STEPS_PER_EPISODE, client_id=3)
     #env = MarketEnv(("EUR", "CASH", "IDEALPRO", "USD"), max_quantity=20000, quantity_increment=20000, obs_xform=xform.Basic(30, 4), episode_steps=STEPS_PER_EPISODE, client_id=5, afterhours=False)
+    env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 30, obs_xform=xform.Basic(30, 4), episode_steps=STEPS_PER_EPISODE, client_id=3, loglevel=logging.DEBUG)
+
     obs_size = np.product(env.observation_space.shape)
 
     # Actor model
