@@ -414,16 +414,16 @@ class MarketEnv(gym.Env, EzPickle):
             #########################################################################################
 
             if  self.action > 0.5 : #TODO
-                self._ax[-1].scatter(self._iteration + 0.5, bid + 0.03 *
+                self._ax[-1].scatter(self.step_num + 0.5, bid + 0.03 *
                                      yrange, color='orangered', marker='v')
             elif self.action < 0.5 :
-                self._ax[-1].scatter(self._iteration + 0.5, ask - 0.03 *
+                self._ax[-1].scatter(self.step_num + 0.5, ask - 0.03 *
                                      yrange, color='lawngreen', marker='^')
 
 
             plt.suptitle('Current Reward: ' + "%.2f" % self.reward + ' ~ ' +
                          'Cumulated PnL: ' + "%.2f" % self.episode_profit + ' ~ ' +
-                         'Action: ' + ['flat', 'long'][self.action] + ' ~ ')
+                         'Action: ' + ['flat', 'long'][int(round(self.action))] + ' ~ ')
 
             # plt.suptitle('Current Reward: ' + "%.2f" % self.reward + ' ~ ' +
             #              'Cumulated PnL: ' + "%.2f" % self.episode_profit + ' ~ ' +
@@ -431,7 +431,7 @@ class MarketEnv(gym.Env, EzPickle):
             #              'Entry Price: ' + "%.2f" % self._entry_price)
             ########################################################################################
             self._f.tight_layout()
-            plt.xticks(range(self._iteration)[::5])
+            plt.xticks(range(self.step_num)[::5])
             print(max(0, self.step_num - 80.5), self.step_num + 0.5)
             plt.xlim([max(0, self.step_num - 80.5), self.step_num + 0.5])  # 限定了x轴的最大范围
             plt.subplots_adjust(top=0.85)
