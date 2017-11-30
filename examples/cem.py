@@ -23,15 +23,15 @@ from sairen import MarketEnv
 from sairen.xform import BinaryDelta
 
 # 1 iteration runs `EPISODES` episodes, each with different parameters.  Each episode is `STEPS_PER_EPISODE` steps.
-ITERATIONS = 2
-EPISODES = 10
-STEPS_PER_EPISODE = 5
+ITERATIONS = 20
+EPISODES = 100
+STEPS_PER_EPISODE = 500
 
 
 class ContinuousActionLinearPolicy:
     """Agent that multiplies the observation by its weights and returns the sum."""
     def __init__(self, theta, n_in, n_out):
-        print('ContinuousActionLinearPolicy - theta:',theta,len(theta),n_in,n_out)
+        #print('ContinuousActionLinearPolicy - theta:',theta,len(theta),n_in,n_out)
         assert len(theta) == (n_in + 1) * n_out, 'n_in {}, n_out {}, len(theta) {}'.format(n_in, n_out, len(theta))
         self.W = theta[0:n_in * n_out].reshape(n_in, n_out)
         self.b = theta[n_in * n_out:None].reshape(1, n_out)
@@ -58,22 +58,22 @@ def cem(eval_func, params_mean, batch_size, n_iter, elite_frac, params_std=1.0):
     params_std = np.ones_like(params_mean) * params_std
 
     for _ in range(n_iter):
-        print("========================cem:",n_iter,params_mean)
+        #print("========================cem:",n_iter,params_mean)
         params = np.array([params_mean + dth for dth in params_std[None, :] * np.random.randn(batch_size, params_mean.size)])
-        print("params_mean after :",params)
+        #print("params_mean after :",params)
         rewards = np.array([eval_func(p, ep) for ep, p in enumerate(params)])
-        print("rewards:",rewards)
+        #print("rewards:",rewards)
         elite_inds = rewards.argsort()[::-1][:n_elite]
         elite_params = params[elite_inds]
-        print("elite_params :",elite_params)
+        #print("elite_params :",elite_params)
         params_mean = elite_params.mean(axis=0)
         params_std = elite_params.std(axis=0)
-        print("params_mean,params_std",params_mean,params_std)
+        #print("params_mean,params_std",params_mean,params_std)
         yield {'params_mean': params, 'rewards': rewards, 'params_best': elite_params[0], 'reward_best': rewards.max(), 'reward_elite': rewards[elite_inds].mean(), 'elite_mean': params_mean, 'elite_std': params_std, 'reward_mean': rewards.mean(), 'reward_std': rewards.std()}
 
 
-def evaluate(env, agent, steps, iteration=None, episode=None, render=True):
-    print("==============================evaluate enter: steps",steps)
+def evaluate(env, agent, steps, iteration=None, episode=None, render=False):
+    #print("==============================evaluate enter: steps",steps)
 
     """:Return: the total reward for running `agent` in `env` for `steps`.
 
@@ -85,9 +85,9 @@ def evaluate(env, agent, steps, iteration=None, episode=None, render=True):
     obs = env.reset()
 
     for _ in itertools.islice(itertools.count(), steps):     # So None means infinite
-        print("==============================evaluate itertools:",_)
+        #print("==============================evaluate itertools:",_)
         action = np.asscalar(agent.act(obs))
-        print("---------------action:",action,obs)
+        #print("---------------action:",action,obs)
         obs, reward, done, info = env.step(action)
         total_reward += reward
         if render: env.render()
@@ -101,13 +101,13 @@ import logging
 
 def main():
     #env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 10, obs_xform=BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=2)
-    env = MarketEnv("BTC-USD", max_quantity = 1, quantity_increment = 1, obs_type = 'time', obs_size = 30, episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
+    env = MarketEnv("BTC-USD", max_quantity = 1, quantity_increment = 1, obs_type = 'time', obs_size = 60, obs_xform=BinaryDelta(3),episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
 
     obs_size = env.observation_space.shape[0]
-    print('obs size:',obs_size)
+    #print('obs size:',obs_size)
 
     def evaluate_params(agent_params, iteration=None, episode=None):
-        print("++++++++++++++++++++++++++++evaluate_params enter:",agent_params, iteration, episode)
+        #print("++++++++++++++++++++++++++++evaluate_params enter:",agent_params, iteration, episode)
         """Closure passed to `cem()` that just takes `agent_params`, initializes an agent, runs until done,
          and returns the total reward.
 

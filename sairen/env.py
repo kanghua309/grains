@@ -315,10 +315,11 @@ class MarketEnv(gym.Env, EzPickle):
         self.action = int(round(float(action)))  # Save raw un-clipped action (but make sure it's a float)
 
         # Issue order to take action
-        #self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
+        self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
         #print("+++++++++++++++++++++++++++++++++++++++++++++ignore cancel order all:")
         position = self.gb.get_position(self.instrument)
-        open_orders = sum(1 for _ in self.gb.get_open_orders())
+        #open_orders = sum(1 for _ in self.gb.get_open_orders())
+        open_orders = 0 #TODO
         #self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
         self.delta_desired = int(np.clip(round(self.action * self.max_quantity), 0, self.max_quantity))
         self.delta_desired = round(self.delta_desired * COINFRAC,3)
