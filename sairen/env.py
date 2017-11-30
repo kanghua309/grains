@@ -67,6 +67,8 @@ OBS_BOUNDS = Obs(time=MAX_TIME,
                  position=1, unrealized_gain=MAX_INSTRUMENT_PRICE)      # type: ignore
 
 
+COINFRAC = 0.01
+
 class MarketEnv(gym.Env, EzPickle):
     """Access the Interactive Brokers trading API as an OpenAI Gym environment.
 
@@ -77,7 +79,7 @@ class MarketEnv(gym.Env, EzPickle):
     disconnect from IB.
     """
 
-    action_space = Box(0, 1, shape=(1,))#TODO
+    action_space = Box(-1, 1, shape=(1,))#TODO
     """
     MarketEnv's action is a continuous float from -1 to 1 that sets the target position as a fraction of the
     environment's ``max_quantity`` parameter.  -1 means set the position to short ``max_quantity``, 0 means
@@ -135,10 +137,12 @@ class MarketEnv(gym.Env, EzPickle):
         self.reward = None      # Save most recent reward so we can use it in render()
         self.raw_obs = None     # Raw obs as ndarray
         self.observation = None # Most recent transformed observation
-        self.pos_desired = 0    # Action translated into target number of contracts
+        self.cumulative_reward = 0.0
+        self.delta_desired = 0    # Action translated into target number of contracts
         self.done = True        # Start in the "please call reset()" state
         self.step_num = 0       # Count calls to step() since last reset()
         self.unrealized_gain = 0.0
+        self.lastest_bar = None
         self._finish_on_next_step = False
         assert obs_xform is None or callable(obs_xform)
         self._xform = (lambda obs: obs) if obs_xform is None else obs_xform         # Default xform is identity
@@ -177,10 +181,12 @@ class MarketEnv(gym.Env, EzPickle):
         self.unrealized_gain = self.pos_actual * self.instrument.leverage * ((bar.bid if self.pos_actual > 0 else bar.ask) - (self.gb.get_cost(self.instrument) or 0))     # If pos > 0, what could we sell for?  Assume buy at the ask, sell at the bid
         #print("unrealized_gain:",self.unrealized_gain,self.max_quantity,self.instrument.leverage,bar.bid,bar.ask,self.gb.get_cost(self.instrument))
         #self.unrealized_gain = (bar.close - bar.open) *  self.pos_actual
-        print("pos_actual:%s,unrealized_gain:%scost:%s" % (self.pos_actual,self.unrealized_gain,self.gb.get_cost(self.instrument)))
+        print("pos_actual:%s,unrealized_gain:%s,cost:%s" % (self.pos_actual,self.unrealized_gain,self.gb.get_cost(self.instrument)))
         #self.profit = (bar.close - bar.open) *  self.pos_actual #current bar step profit ?
-        self.profit = (bar.close - bar.open) #current bar step profit ?
-        print("profit for this bar",self.profit)
+        #self.profit = (bar.close - bar.open) #current bar step profit ?
+        self.lastest_bar = bar
+        #self.cumulative_award = (bar.close - bar.open) * self.action * self.max_quantity * COINFRAC #一个step里,award利润计算 ！！！！
+        #print("profit for this bar",self.profit)
         self.raw_obs = np.array(bar + (self.pos_actual / self.max_quantity, self.unrealized_gain), dtype=float)
         self.log.debug('OBS RAW %s', self.raw_obs)
         obs = self._xform(self.raw_obs)
@@ -189,7 +195,6 @@ class MarketEnv(gym.Env, EzPickle):
         #print("=============== obs ......:",obs)
         if obs is not None and self.gb.connected and not self.done and self.data_q is not None:     # guard against step() being called before reset().  It also turns out that you can still receive market data while "disconnected"...
             self.data_q.put_nowait(obs)
-            self.log.info('put into data_q !!!')
             if self.data_q.qsize() > 1:
                 self.log.warning('Your agent is falling behind! Observation queue contains %d items.', self.data_q.qsize())
 
@@ -221,7 +226,7 @@ class MarketEnv(gym.Env, EzPickle):
         return {
             'step': self.step_num,
             'episode_profit': self.episode_profit,
-            'position_desired': self.pos_desired,
+            'position_desired': self.delta_desired,
             'position_actual': self.gb.get_position(self.instrument),
             'unrealized_gain': self.unrealized_gain,
             'avg_cost': self.gb.get_cost(self.instrument) or 0.0,
@@ -265,7 +270,7 @@ class MarketEnv(gym.Env, EzPickle):
             time.sleep(self.gb.timeout_sec)
         self.done = False
         self.action = 0.0
-        self.pos_desired = 0
+        self.delta_desired = 0
         self._finish_on_next_step = False
         self.step_num = 0
         self.data_q = Queue()
@@ -274,7 +279,7 @@ class MarketEnv(gym.Env, EzPickle):
         self.act_start_time = time.time()
         return self.observation
 
-    def _step(self, action: float) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def _step(self, action: float) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:   #action 调用前已经被修正为 -1, 0 ,1
         """Execute any trades necessary to allocate the position to the float `action` in [-1, 1] (short, long),
         wait for the next (transformed) observation, and return the observation and reward.
 
@@ -287,6 +292,7 @@ class MarketEnv(gym.Env, EzPickle):
         if self.done:
             raise ValueError("I'm done, yo.  Call reset() if you want another play.")
 
+
         # If last step, set action to flatten, done = True
         done = False
         if self._finish_on_next_step or (self.episode_steps is not None and self.step_num >= self.episode_steps) or not self.gb.connected or not self.market_open():
@@ -295,41 +301,50 @@ class MarketEnv(gym.Env, EzPickle):
             action = 0.0
             done = True     # Don't set self.done before waiting on self.data_q, because it will never put anything in.
 
-        self.action = float(action)        # Save raw un-clipped action (but make sure it's a float)
+        ##################################################################################
+        # action 0(short) , 1(flatter),  2(long)
+        self.reward = (self.lastest_bar.close - self.lastest_bar.open) * (self.action ) * self.max_quantity * COINFRAC  # 一个step里,award利润计算 ！！！！
+        self.cumulative_reward += self.reward
+        print("last step reward:%s , total cumulative_award:%s" % (self.reward,self.cumulative_reward))
+        ##################################################################################
+        #self.action = float(action)        # Save raw un-clipped action (but make sure it's a float)
+        #self.action = int(round(float(action))) - 1  # Save raw un-clipped action (but make sure it's a float)
         action = np.clip(action, self.action_space.low, self.action_space.high)
         assert self.action_space.contains(action), 'action {}, low {}, high {}'.format(action, self.action_space.low, self.action_space.high)       # requires an array
         action = np.asscalar(action)
+        self.action = int(round(float(action)))  # Save raw un-clipped action (but make sure it's a float)
+
         # Issue order to take action
         #self.gb.cancel_all(instrument=self.instrument,hard_global_cancel = True)
-        print("+++++++++++++++++++++++++++++++++++++++++++++ignore cancel order all:")
+        #print("+++++++++++++++++++++++++++++++++++++++++++++ignore cancel order all:")
         position = self.gb.get_position(self.instrument)
         open_orders = sum(1 for _ in self.gb.get_open_orders())
-        self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
-        print('-----------------------------step action,desired:',action, self.pos_desired )
+        #self.pos_desired = int(np.clip(round(action * self.max_quantity / self.quantity_increment) * self.quantity_increment, -self.max_quantity, self.max_quantity))
+        self.delta_desired = int(np.clip(round(self.action * self.max_quantity), 0, self.max_quantity))
+        self.delta_desired = round(self.delta_desired * COINFRAC,3)
 
+        print('input action:%s,current action:%s,now desired:%s' % (action,self.action,self.delta_desired))
         # Try to prevent orders and/or positions piling up when things get busy.
-        if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.pos_desired) >= abs(position)):
+        if open_orders > 1 or (abs(position) > self.max_quantity and abs(self.delta_desired) >= abs(position)):
             self.log.warning('Constipation: position %d, %d open orders, skipping action.', position, open_orders)
         else:
-            #self.log.info('0 ORDER TARGET %d', self.pos_desired)
+            self.log.info('To Place Order:%d', self.delta_desired)
             #self.gb.order_target(self.instrument, round(self.pos_desired/100,3))#TODO
-            print("+++++++++++++++++++++++++++++++++++++++++++++ignore order_target:",round(self.pos_desired/100,3))
+            self.gb.order(self.instrument,self.delta_desired)
+            #print("+++++++++++++++++++++++++++++++++++++++++++++ignore order_target:", round(self.delta_desired / COINFRAC, 3))
             #self.log.info('1 ORDER TARGET %d', round(self.pos_desired/100,3))
 
         if done:
             # TODO: Actually wait until order settles.  (Close is not happening or accounting is not good.)
             time.sleep(1)       # Wait for final close order to fill
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++=+++++",done,self.step_num,self.profit * self.pos_desired)
-        self.reward = self.profit * self.pos_desired      # Reward is profit since last step
+        #print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++=+++++", done, self.step_num, self.profit * self.delta_desired)
+        #self.reward = self.profit * self.pos_desired      # Reward is profit since last step
         self.episode_profit += self.profit
         self.profit = 0
         if done:
             self.observation = np.zeros(self.observation_space.shape)
         else:
-            self.log.info("0 --------------------get observation from queue")
             self.observation = self.data_q.get()       # block until next obs ready
-            self.log.info("1 --------------------get observation from queue")
-
 
         self.done = done        # Don't set until after waiting on queue, or queue will never get filled.
         info = self.info        # Variable because computed property, used more than once, want to be consistent.
@@ -339,7 +354,6 @@ class MarketEnv(gym.Env, EzPickle):
         return self.observation, self.reward, self.done, info
 
     def _render(self, mode='ansi', close=False):
-        print('----------render--------------',mode)
         if mode in ( 'ansi'):
             outfile = StringIO() if mode == 'ansi' else sys.stdout
             if not close:
@@ -422,7 +436,7 @@ class MarketEnv(gym.Env, EzPickle):
 
 
             plt.suptitle('Current Reward: ' + "%.2f" % self.reward + ' ~ ' +
-                         'Cumulated PnL: ' + "%.2f" % self.episode_profit + ' ~ ' +
+                         'Cumulated Reward: ' + "%.2f" % self.cumulative_reward + ' ~ ' +
                          'Action: ' + ['flat', 'long'][int(round(self.action))] + ' ~ ')
 
             # plt.suptitle('Current Reward: ' + "%.2f" % self.reward + ' ~ ' +

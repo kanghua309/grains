@@ -101,7 +101,7 @@ import logging
 
 def main():
     #env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 10, obs_xform=BinaryDelta(3), episode_steps=STEPS_PER_EPISODE, client_id=2)
-    env = MarketEnv("BTC-USD", max_quantity = 10, quantity_increment = 1, obs_type = 'time', obs_size = 30, episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
+    env = MarketEnv("BTC-USD", max_quantity = 1, quantity_increment = 1, obs_type = 'time', obs_size = 30, episode_steps=STEPS_PER_EPISODE, client_id=2, loglevel=logging.DEBUG)
 
     obs_size = env.observation_space.shape[0]
     print('obs size:',obs_size)
